@@ -42,3 +42,31 @@
     </dependencies>
 
 ```
+
+### 列出目录文件
+
+> 本例使用Spring Boot CommandLineRunner
+
+```java
+@Component
+public class MyCommandRunner implements CommandLineRunner {
+
+
+    @Override
+    public void run(String... args) throws IOException, URISyntaxException {
+        Configuration conf=new Configuration();
+        conf.setBoolean("dfs.client.use.datanode.hostname", true);
+        conf.setBoolean("dfs.datanode.use.datanode.hostname", true);
+        System.setProperty("HADOOP_USER_NAME","root");
+        conf.set("fs.defaultFS", "hdfs://192.168.10.16:9000");
+        FileSystem fileSystem = FileSystem.get(conf);
+        FileStatus[] fs = fileSystem.listStatus(new Path("/tmp"));
+        Path[] listPath = FileUtil.stat2Paths(fs);
+        System.out.println("-----");
+        for(Path p : listPath)
+            System.out.println(p);
+        fileSystem.close();
+    }
+}
+```
+
