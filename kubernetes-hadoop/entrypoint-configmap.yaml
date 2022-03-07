@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: entrypoint-config
+data:
+  entrypoint-datanode.sh: |
+    #!/bin/bash
+    hdfs --daemon start datanode
+    yarn --daemon start nodemanager
+    tail -f ${HADOOP_HOME}/logs/hadoop-root-datanode-$(hostname).log
+  entrypoint-namenode.sh: |
+    #!/bin/bash
+
+    # if metadata dir is empty, then format it
+    DIR=${HADOOP_HOME}/metadata
+    if [ "$(ls -A $DIR)" ]; then
+       echo "[INFO] namenode name dir is not empty, skip format it" 
+    else
+       echo "[INFO] namenode name dir is not empty,format it"
+       hdfs namenode -format $(hostname) -nonInteractive
+    fi
+    # start name node daemon
+    hdfs --daemon start namenode
+    yarn --daemon start resourcemanager
+    mapred --daemon start historyserver
+    tail -f ${HADOOP_HOME}/logs/hadoop-root-namenode-$(hostname).log
+    
+

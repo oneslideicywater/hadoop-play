@@ -1,0 +1,3 @@
+## clickhouse
+
+clickhouse最大的优势是不依赖hadoop生态，可以作为OLAP场景下的关系型数据库。区别于MySQL等行式存储，clickhouse使用的是列式存储。
