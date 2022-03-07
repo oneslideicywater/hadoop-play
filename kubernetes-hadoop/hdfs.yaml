@@ -1,0 +1,400 @@
+# Source: hdfs/charts/hdfs-config-k8s/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hdfs-config
+data:
+  core-site.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://hdfs-namenode-0.hdfs-namenode:9000</value>
+        </property> 
+
+        <!--web console cors settings-->
+        <property>
+            <name>hadoop.http.filter.initializers</name>
+            <value>org.apache.hadoop.security.HttpCrossOriginFilterInitializer</value>
+        </property>
+        <property>
+            <name>hadoop.http.cross-origin.enabled</name>
+            <value>true</value>
+        </property>
+        <property>
+            <name>hadoop.http.cross-origin.allowed-origins</name>
+            <value>*</value>
+        </property>
+        <property>
+            <name>hadoop.http.cross-origin.allowed-methods</name>
+            <value>GET,POST,HEAD</value>
+        </property>
+        <property>
+            <name>hadoop.http.cross-origin.allowed-headers</name>
+            <value>X-Requested-With,Content-Type,Accept,Origin</value>
+        </property>
+        <property>
+            <name>hadoop.http.cross-origin.max-age</name>
+            <value>1800</value>
+        </property>
+        
+
+        <property>
+            <name>hadoop.tmp.dir</name>
+            <value>/opt/hadoop/tmp</value>
+        </property> 
+    </configuration>
+  hdfs-site.xml: |
+   <?xml version="1.0" encoding="UTF-8"?>
+   <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+    <configuration>
+    <configuration>
+        <property>
+            <name>dfs.replication</name>
+            <value>1</value>
+        </property>
+        <!--Path on the local filesystem where the NameNode stores the namespace and transactions logs persistently-->
+        <property>
+            <name>dfs.namenode.name.dir</name>
+            <value>/opt/hadoop/metadata</value>
+        </property>
+        <!--Comma separated list of paths on the local filesystem of a DataNode where it should store its blocks-->
+        <property>
+            <name>dfs.datanode.data.dir</name>
+            <value>/opt/hadoop/data</value>
+        </property>
+    </configuration>
+    </configuration>
+  yarn-site.xml: |
+   <?xml version="1.0"?>
+   <configuration>
+      <property>
+         <name>yarn.log-aggregation-enable</name>
+         <value>true</value>
+      </property>
+      <property>
+         <description>How long to keep aggregation logs before deleting them.  -1 disables. Be careful set this too small and you will spam the name node.</description>
+         <name>yarn.log-aggregation.retain-seconds</name>
+         <value>-1</value>
+      </property> 
+      <property>
+        <name>yarn.nodemanager.aux-services</name>
+        <value>mapreduce_shuffle</value>
+      </property>
+      <property>
+        <name>yarn.nodemanager.env-whitelist</name>
+        <value>JAVA_HOME,HADOOP_COMMON_HOME,HADOOP_HDFS_HOME,HADOOP_CONF_DIR,CLASSPATH_PREPEND_DISTCACHE,HADOOP_YARN_HOME,HADOOP_HOME,PATH,LANG,TZ,HADOOP_MAPRED_HOME</value>
+      </property>
+ 
+      <!--yarn address-->
+      <property>  
+        <name>yarn.resourcemanager.address</name>  
+        <value>hdfs-namenode-0.hdfs-namenode:8032</value>  
+      </property>  
+      <property>
+        <name>yarn.log.server.url</name>
+        <value>http://hdfs-namenode-0.hdfs-namenode:19888/jobhistory/logs</value>
+      </property>
+   </configuration>
+  mapred-site.xml: |
+   <?xml version="1.0"?>
+   <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+
+   <configuration>
+      <property>
+        <name>mapreduce.framework.name</name>
+        <value>yarn</value>
+      </property>
+      <property>
+         <name>yarn.app.mapreduce.am.env</name>
+         <value>HADOOP_MAPRED_HOME=/opt/hadoop</value>
+      </property>
+      <property>
+         <name>mapreduce.map.env</name>
+         <value>HADOOP_MAPRED_HOME=/opt/hadoop</value>
+      </property>
+      <property>
+         <name>mapreduce.reduce.env</name>
+         <value>HADOOP_MAPRED_HOME=/opt/hadoop</value>
+      </property>
+
+      <property>
+        <name>mapreduce.application.classpath</name>
+        <value>$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/*:$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/lib/*</value>
+      </property>
+   </configuration>
+---
+# Source: hdfs/charts/hdfs-datanode-k8s/templates/datanode-daemonset.yaml
+# Deleting a daemonset may need some trick. See
+# https://github.com/kubernetes/kubernetes/issues/33245#issuecomment-261250489
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hdfs-datanode
+  labels:
+    app: hdfs-datanode
+spec:
+  selector:
+    matchLabels:
+      app: hdfs-datanode
+  template:
+    metadata:
+      labels:
+        app: hdfs-datanode
+    spec:
+
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: datanode
+          image: hadoop:v3.3.1
+          command: ['/bin/bash', '-c']
+          # The start script is provided im image.
+          args:
+            - bash /entrypoint-datanode.sh
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            httpGet:
+              path: /datanode.html
+              port: 9864
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /datanode.html
+              port: 9864
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: hdfs-config
+              mountPath: /opt/hadoop/etc/hadoop/core-site.xml
+              subPath: core-site.xml
+              readOnly: true
+            - name: hdfs-config-2
+              mountPath: /opt/hadoop/etc/hadoop/hdfs-site.xml
+              subPath: hdfs-site.xml
+              readOnly: true
+            - name: hdfs-config-3
+              mountPath: /opt/hadoop/etc/hadoop/mapred-site.xml
+              subPath: mapred-site.xml
+              readOnly: true
+            - name: hdfs-config-4
+              mountPath: /opt/hadoop/etc/hadoop/yarn-site.xml
+              subPath: yarn-site.xml
+              readOnly: true
+
+            - name: hdfs-data
+              mountPath: /opt/hadoop/data
+            - name: hdfs-tmp
+              mountPath: /opt/hadoop/tmp
+            - name: entrypoint1
+              mountPath: /entrypoint-datanode.sh
+              subPath: entrypoint-datanode.sh
+              readOnly: true
+
+      restartPolicy: Always
+      volumes:
+        - name: hdfs-data
+          hostPath:
+            path: /datanode
+        - name: hdfs-tmp
+          hostPath:
+            path: /datanodetmp
+        - name: hdfs-config
+          configMap:
+            name: hdfs-config
+            items:
+              - key: core-site.xml
+                path: core-site.xml
+        - name: hdfs-config-2
+          configMap:
+            name: hdfs-config
+            items:
+              - key: hdfs-site.xml
+                path: hdfs-site.xml
+        - name: hdfs-config-3
+          configMap:
+            name: hdfs-config
+            items:
+              - key: mapred-site.xml
+                path: mapred-site.xml
+        - name: hdfs-config-4
+          configMap:
+            name: hdfs-config
+            items:
+              - key: yarn-site.xml
+                path: yarn-site.xml
+
+        - name: entrypoint1
+          configMap:
+            name: entrypoint-config
+            items:
+              - key: entrypoint-datanode.sh
+                path: entrypoint-datanode.sh
+
+
+
+   
+
+---
+# Source: hdfs/charts/hdfs-namenode-k8s/templates/namenode-statefulset.yaml
+# A headless service to create DNS records.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs-namenode
+  labels:
+    app: hdfs-namenode
+spec:
+  ports:
+  - port: 9000
+    name: fs
+  - port: 9870
+    name: http
+  - port: 8032
+    name: resourcemanager
+  - port: 19888
+    name: jobhistory
+
+  clusterIP: None
+  selector:
+    app: hdfs-namenode
+---
+# Source: hdfs/charts/hdfs-namenode-k8s/templates/namenode-statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hdfs-namenode
+  labels:
+    app: hdfs-namenode
+spec:
+  selector:
+    matchLabels:
+      app: hdfs-namenode
+  serviceName: hdfs-namenode
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: hdfs-namenode
+    spec:
+      # Use hostNetwork so datanodes connect to namenode without going through an overlay network
+      # like weave. Otherwise, namenode fails to see physical IP address of datanodes.
+      # Disabling this will break data locality as namenode will see pod virtual IPs and fails to
+      # equate them with cluster node physical IPs associated with data nodes.
+      # We currently disable this only for CI on minikube.
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                      - hdfs-namenode
+              topologyKey: "kubernetes.io/hostname"
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: hdfs-role
+                operator: In
+                values:
+                - namenode   
+      containers:
+        # TODO: Support hadoop version as option.
+        - name: hdfs-namenode
+          image: hadoop:v3.3.1
+          imagePullPolicy: IfNotPresent
+          command: ['/bin/bash', '-c']
+          # The start script is provided im image.
+          args:
+            - bash /entrypoint-namenode.sh
+          ports:
+          - containerPort: 9000
+            name: fs
+          - containerPort: 9870
+            name: http
+          - containerPort: 8032
+            name: resourcemanager
+          - containerPort: 19888
+            name: jobhistory
+          volumeMounts:
+            # Mount a subpath of the volume so that the name subdir would be a
+            # brand new empty dir. This way, we won't get affected by existing
+            # files in the volume top dir.
+            - name: metadatadir
+              mountPath: /opt/hadoop/metadata
+              subPath: metadata
+            - name: namenode-tmp-claim
+              mountPath: /opt/hadoop/tmp
+              subPath: tmp
+
+            - name: hdfs-config
+              mountPath: /opt/hadoop/etc/hadoop/core-site.xml
+              subPath: core-site.xml
+              readOnly: true
+            - name: hdfs-config-2
+              mountPath: /opt/hadoop/etc/hadoop/hdfs-site.xml
+              subPath: hdfs-site.xml
+              readOnly: true
+            - name: hdfs-config-3
+              mountPath: /opt/hadoop/etc/hadoop/mapred-site.xml
+              subPath: mapred-site.xml
+              readOnly: true
+            - name: hdfs-config-4
+              mountPath: /opt/hadoop/etc/hadoop/yarn-site.xml
+              subPath: yarn-site.xml
+              readOnly: true
+            - name: entrypoint1
+              mountPath: /entrypoint-namenode.sh
+              subPath: entrypoint-namenode.sh
+              readOnly: true
+      restartPolicy: Always
+      volumes:
+        - name: hdfs-config
+          configMap:
+            name: hdfs-config
+            items:
+              - key: core-site.xml
+                path: core-site.xml
+        - name: hdfs-config-2
+          configMap:
+            name: hdfs-config
+            items:
+              - key: hdfs-site.xml
+                path: hdfs-site.xml
+        - name: hdfs-config-3
+          configMap:
+            name: hdfs-config
+            items:
+              - key: mapred-site.xml
+                path: mapred-site.xml
+        - name: hdfs-config-4
+          configMap:
+            name: hdfs-config
+            items:
+              - key: yarn-site.xml
+                path: yarn-site.xml
+
+        - name: metadatadir
+          persistentVolumeClaim:
+            claimName: metadatadir
+        - name: namenode-tmp-claim
+          persistentVolumeClaim:
+            claimName: namenode-tmp-claim
+
+        - name: entrypoint1
+          configMap:
+            name: entrypoint-config
+            items:
+              - key: entrypoint-namenode.sh
+                path: entrypoint-namenode.sh
+---
