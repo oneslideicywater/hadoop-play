@@ -12,9 +12,29 @@
 域(Realm)是包含所有请求客户端,KDC,请求服务端主机。
 
 
+## Kerberos认证特点
+
+客户端要访问服务端，需要完成三步交互：
+
+1. 访问AS(Authentication Server)
+2. 访问TGS(Ticket Granting Server)
+3. 访问服务端
+
+kerberos认证有如下特点：
+
+- 每次交互都会获得两条信息，一个信息可以解密，一个信息不可解密
+- 服务端不会直接访问KDC
+- KDC存储所有密钥(secret keys)
+- 密码不会经过网络传输
+
+
+## KDC
 
 
 
+## 认证过程
+
+![kerberos-step1to4](images/kerberos_step_1to4.svg)
 
 ## Reference List
 
