@@ -332,6 +332,8 @@ addprinc admin/admin@BIGDATA.COM
 
 ### 8. 创建用户组和用户
 
+对于每个主机：
+
 ```bash
 groupadd hadoop
 
@@ -339,18 +341,138 @@ useradd -u 502 yarn -g hadoop
 useradd -u 501 hdfs -g hadoop
 ```
 
+
+### 9. 生成keytab文件
+
 对于每个主机:
 
+添加用户:
+
 ```bash
-kadmin.local
+$ kadmin.local
 #创建用户
 addprinc -randkey yarn/node1.bigdata.com@BIGDATA.COM
 
-addprinc -randkey hdfs/node2.bigdata.com@BIGDATA.COM
+addprinc -randkey hdfs/node1.bigdata.com@BIGDATA.COM
 
-addprinc -randkey HTTP/node3.bigdata.com@BIGDATA.COM
+addprinc -randkey HTTP/node1.bigdata.com@BIGDATA.COM
 ```
 
+生成keytab文件:
+
+```bash
+# 生成密钥文件
+cd /etc/security/keytab
+# 所有yarn用户生成至yarn.keytab
+kadmin.local -q "xst -k yarn.keytab  yarn/node1.bigdata.com@BIGDATA.COM"
+kadmin.local -q "xst -k yarn.keytab  yarn/node2.bigdata.com@BIGDATA.COM"
+# ...
+
+kadmin.local -q "xst -k HTTP.keytab  HTTP/node1.bigdata.com@BIGDATA.COM"
+kadmin.local -q "xst -k HTTP.keytab  HTTP/node2.bigdata.com@BIGDATA.COM"
+
+kadmin.local -q "xst -k hdfs.keytab  hdfs/node1.bigdata.com@BIGDATA.COM"
+kadmin.local -q "xst -k hdfs.keytab  hdfs/node2.bigdata.com@BIGDATA.COM"
+
+```
+
+合并keytab文件
+
+```bash
+#合并成一个keytab文件，rkt表示展示,wkt表示写入
+$ ktutil
+ktutil: rkt hdfs.keytab
+ktutil: rkt HTTP.keytab
+ktutil: rkt yarn.keytab
+ktutil: wkt merged.keytab
+#查看
+klist -ket  merged.keytab
+```
+
+修改keytab文件权限：
+
+```bash
+chown hdfs:hadoop hdfs.keytab 
+```
+### 9. 生成证书文件
+
+> 把keystore和truststore堪称K-V数据库。keystore用于存储私钥，truststore用于存储可信任证书。alias就是Key,证书就是value
+
+生成CA证书:
+
+```bash
+# /etc/https为共享盘
+cd /etc/https
+openssl req -new -x509 -keyout ca.key -out ca.crt -days 9999 -subj '/C=CN/ST=beijing/L=chaoyang/O=lecloud/OU=dt/CN=bigdata.com'
+```
+在每一条机器上生成, keystore & trustore
+
+```bash
+# 生成 keystore,使用nodex.bigdata.com代替${fqdn}
+keytool -keystore keystore -alias node1 -validity 9999 -genkey -keyalg RSA -keysize 2048 -dname "CN=${fqdn}, OU=DT, O=DT, L=CY, ST=BJ, C=CN"
+ 
+ 
+# 添加 CA 到 truststore
+keytool -keystore truststore -alias CARoot -import -file /etc/https/ca.crt
+ 
+# 从 keystore 中导出 cert
+keytool -certreq -alias node1 -keystore keystore -file node1.crt
+ 
+# 用 CA 对 cert 签名
+openssl x509 -req -CA /etc/https/ca.crt -CAkey /etc/https/ca.key -in node1.crt -out node1-signed.crt -days 9999 -CAcreateserial
+ 
+# 将 CA 的 cert 和用 CA 签名之后的 cert 导入 keystore
+keytool -keystore keystore -alias CARoot -import -file /etc/https/ca.crt
+keytool -keystore keystore -alias node1 -import -file node1-signed.crt
+```
+
+保存keystore和truststore文件为`.jks`文件。
+
+```bash
+cp keystore /etc/https/keystore.jks
+cp truststore /etc/https/truststore.jks
+```
+
+参考: [hadoop https配置](https://www.cnblogs.com/kisf/p/7573561.html)
+
+
+### 10. 启动服务
+
+启动namenode:
+
+```bash
+chown -R hdfs:hadoop hadoop
+bin/hdfs namenode -format bigdata
+bin/hdfs --daemon start namenode
+bin/hdfs --daemon start datanode
+```
+检查进程启动情况：
+
+```bash
+[root@bogon hadoop]# jps
+11361 NameNode
+11626 DataNode
+12508 Jps
+```
+
+### 11. 验证配置是否成功
+
+登录kerberos
+
+```bash
+kinit -kt /etc/security/keytab/merge.keytab hdfs/node1.bigdata.com@BIGDATA.COM
+```
+
+列出文件系统的内容:
+
+```bash
+[root@bogon hadoop]# bin/hadoop dfs -ls /
+WARNING: Use of this script to execute dfs is deprecated.
+WARNING: Attempting to execute replacement "hdfs dfs" instead.
+
+Found 1 items
+drwxr-xr-x   - hdfs supergroup          0 2022-03-09 01:12 /tmp
+```
 ## Reference List
 
 1. [Hadoop in Secure Mode](https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-common/SecureMode.html)
