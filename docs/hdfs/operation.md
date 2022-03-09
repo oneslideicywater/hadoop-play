@@ -174,5 +174,6 @@ kubectl label node1 app=hdfs-namenode
 - HTTPS机制
 - Java的TrustStore和Keystore的用途和区别 & keytool CLI使用
 
+具体配置文件和步骤，参考[Hadoop配置Kerberos](/hdfs/kerberos-step.md)
 
 
